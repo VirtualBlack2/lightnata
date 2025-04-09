@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "391237701603",
+    "project_id": "lightnata-a4df3",
+    "storage_bucket": "lightnata-a4df3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:391237701603:android:9f748c326f51eafc5a9ad6",
+        "android_client_info": {
+          "package_name": "com.example.lightnata"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDLvdWUS21svDsBu2atPJrEotfwRt7R5xU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
