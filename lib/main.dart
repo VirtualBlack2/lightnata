@@ -33,9 +33,28 @@ class EntryScreen extends StatefulWidget {
   State<EntryScreen> createState() => _EntryScreenState();
 }
 
-class _EntryScreenState extends State<EntryScreen> {
+class _EntryScreenState extends State<EntryScreen> with SingleTickerProviderStateMixin {
   final TextEditingController _controller = TextEditingController();
   bool _showGreeting = false;
+
+  late AnimationController _bounceController;
+
+  @override
+  void initState() {
+    super.initState();
+    _bounceController = AnimationController(
+      vsync: this,
+      duration: Duration(milliseconds: 1000),
+      lowerBound: 0.9,
+      upperBound: 1.1,
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _bounceController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,31 +65,46 @@ class _EntryScreenState extends State<EntryScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text("That's an awesome name,", style: TextStyle(fontSize: 20)),
-            Text(_controller.text, style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+            Text(
+              _controller.text,
+              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+            ),
             SizedBox(height: 20),
             ElevatedButton(
-              onPressed: () async {
-                SharedPreferences prefs = await SharedPreferences.getInstance();
-                await prefs.setString("username", _controller.text);
-                Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => LightnataApp(userName: _controller.text)));
+              onPressed: () {
+                Navigator.pushReplacement(
+                  context,
+                  PageRouteBuilder(
+                    transitionDuration: Duration(milliseconds: 600),
+                    pageBuilder: (_, __, ___) => LightnataApp(userName: _controller.text),
+                    transitionsBuilder: (_, animation, __, child) {
+                      return FadeTransition(opacity: animation, child: child);
+                    },
+                  ),
+                );
               },
               child: Text("Continue"),
-            )
+            ),
           ],
         )
             : Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            AnimatedDefaultTextStyle(
-              duration: Duration(milliseconds: 500),
-              style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.green),
-              child: Text("Hello!"),
+            ScaleTransition(
+              scale: _bounceController,
+              child: Text(
+                "Hello!",
+                style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.green),
+              ),
             ),
             SizedBox(height: 20),
             Text("What should we call you?"),
             Padding(
               padding: const EdgeInsets.all(20.0),
-              child: TextField(controller: _controller, decoration: InputDecoration(labelText: "Name")),
+              child: TextField(
+                controller: _controller,
+                decoration: InputDecoration(labelText: "Name"),
+              ),
             ),
             ElevatedButton(
               onPressed: () => setState(() => _showGreeting = true),
@@ -81,7 +115,10 @@ class _EntryScreenState extends State<EntryScreen> {
       ),
     );
   }
-}
+
+  }
+
+
 
 class LightnataApp extends StatefulWidget {
   final String userName;
@@ -182,14 +219,20 @@ class _LightnataAppState extends State<LightnataApp> {
   }
 
   void _listenToAnnouncements() {
-    FirebaseFirestore.instance.collection('announcements').snapshots().listen((snapshot) {
-      if (snapshot.docs.isNotEmpty) {
+    FirebaseFirestore.instance
+        .collection('announcements')
+        .doc('latest') // This always watches the latest published announcement
+        .snapshots()
+        .listen((snapshot) {
+      if (snapshot.exists && snapshot.data() != null) {
         setState(() {
-          announcementText = snapshot.docs.last.data()['text'] ?? "";
+          announcementText = snapshot.data()!['text'] ?? "";
         });
       }
     });
   }
+
+
 
   String _greeting() {
     int hour = DateTime.now().hour;
@@ -203,14 +246,50 @@ class _LightnataAppState extends State<LightnataApp> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text('Lightnata'),
+        title: Text('LightNata'),
         actions: [
           IconButton(
             icon: Icon(Icons.lock_open),
             onPressed: () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => AdminLoginScreen()));
+              TextEditingController _adminPassController = TextEditingController();
+
+              showDialog(
+                context: context,
+                builder: (_) => AlertDialog(
+                  title: Text("Admin Access"),
+                  content: TextField(
+                    controller: _adminPassController,
+                    obscureText: true,
+                    decoration: InputDecoration(labelText: "Enter Admin Password"),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text("Cancel"),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        if (_adminPassController.text == "123") {
+                          Navigator.pop(context); // close dialog
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => AdminLoginScreen()),
+                          );
+                        } else {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text("Wrong password")),
+                          );
+                        }
+                      },
+                      child: Text("Enter"),
+                    ),
+                  ],
+                ),
+              );
             },
           )
+
         ],
       ),
       body: _currentLocation == null
@@ -221,16 +300,10 @@ class _LightnataAppState extends State<LightnataApp> {
               SizedBox(height: 10),
           Text("${_greeting()}, ${widget.userName}", style: TextStyle(fontSize: 20)),
           SizedBox(height: 10),
-          if (announcementText.isNotEmpty)
-      Container(
-      height: 30,
-      color: Colors.green,
-      child: Marquee(
-        text: "📢 $announcementText",
-        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        velocity: 30.0,
-      ),
-    ),
+                if (announcementText.isNotEmpty)
+                  SlidingAnnouncement(text: announcementText),
+
+
     Padding(
     padding: const EdgeInsets.all(12.0),
     child: Text("Is your power out?", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -336,10 +409,15 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
 
   void _publishAnnouncement(String msg) async {
     if (msg.trim().isEmpty) return;
-    await FirebaseFirestore.instance.collection('announcements').add({'text': msg});
+    await FirebaseFirestore.instance
+        .collection('announcements')
+        .doc('latest') // always overwrite 'latest'
+        .set({'text': msg});
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Announcement published.")));
     _announcement.clear();
+    setState(() {}); // force UI refresh
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -384,9 +462,19 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
               ),
               SizedBox(height: 10),
               ElevatedButton(
-                onPressed: () => _publishAnnouncement(_announcement.text),
+                onPressed: () {
+                  final msg = _announcement.text.trim();
+                  if (msg.isNotEmpty) {
+                    _publishAnnouncement(msg);
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text("Announcement can't be empty"),
+                    ));
+                  }
+                },
                 child: Text("Publish"),
               ),
+
               SizedBox(height: 20),
               ElevatedButton(
                 onPressed: () => setState(() => isLoggedIn = false),
@@ -426,4 +514,99 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
     );
   }
 }
+//SLIDING ANIMATION FOR ANNOUNCEMENT
+class SlidingAnnouncement extends StatefulWidget {
+  final String text;
+  const SlidingAnnouncement({required this.text});
 
+  @override
+  _SlidingAnnouncementState createState() => _SlidingAnnouncementState();
+}
+
+class _SlidingAnnouncementState extends State<SlidingAnnouncement>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<Offset> _animation;
+  bool isPaused = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = AnimationController(
+      duration: Duration(seconds: 30),
+      vsync: this,
+    );
+
+    _animation = Tween<Offset>(
+      begin: Offset(1.0, 0.0),
+      end: Offset(-1.5, 0.0),
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.linear));
+
+    _startLoop();
+  }
+
+  void _startLoop() async {
+    while (mounted) {
+      setState(() => isPaused = false);
+      await _controller.forward(from: 0.0);
+      setState(() => isPaused = true);
+      await Future.delayed(Duration(seconds: 60)); // stay static
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 40,
+      color: Colors.green,
+      padding: EdgeInsets.symmetric(horizontal: 10),
+      child: Row(
+        children: [
+          // Fixed NAWEC logo filling the height
+          Container(
+            height: double.infinity,
+            width: 40,
+            child: Image.asset('assets/nawec.jpg', fit: BoxFit.cover),
+          ),
+          SizedBox(width: 10),
+
+          // Sliding or Static text
+          Expanded(
+            child: isPaused
+                ? Text(
+              "📢 ${widget.text}",
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            )
+                : ClipRect(
+              child: SlideTransition(
+                position: _animation,
+                child: Row(
+                  children: [
+                    Text(
+                      "📢 ${widget.text}",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(width: 30),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
