@@ -38,6 +38,10 @@ dependencies:
   geocoding: ^2.1.0
   shared_preferences: ^2.2.2
   marquee: ^2.2.3
+  firebase_messaging: ^14.7.10
+  http: ^0.13.6
+
+
 
 
 
@@ -68,6 +72,9 @@ flutter:
 
   assets:
     - assets/nawec.jpg
+    - assets/out.png
+    - assets/flicker.png
+    - assets/restore.png
 
 
 

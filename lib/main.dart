@@ -14,19 +14,37 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:marquee/marquee.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
-  SharedPreferences prefs = await SharedPreferences.getInstance();
-  String? savedName = prefs.getString("username");
 
-  runApp(MaterialApp(
-    home: savedName != null ? LightnataApp(userName: savedName) : EntryScreen(),
-    debugShowCheckedModeBanner: false,
-  ));
+  try {
+    await Firebase.initializeApp();
+    print('✅ Firebase initialized');
+
+    await FirebaseMessaging.instance.requestPermission();
+    print('✅ Notification permission granted');
+
+    await FirebaseMessaging.instance.subscribeToTopic('announcements');
+    print('✅ Subscribed to topic');
+
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? savedName = prefs.getString("username");
+    print('✅ Username check complete: $savedName');
+
+    runApp(MaterialApp(
+      home: savedName != null ? LightnataApp(userName: savedName) : EntryScreen(),
+      debugShowCheckedModeBanner: false,
+    ));
+  } catch (e, stacktrace) {
+    print('❌ ERROR in main(): $e');
+    print(stacktrace);
+  }
 }
+
+
 
 class EntryScreen extends StatefulWidget {
   @override
@@ -118,6 +136,7 @@ class _EntryScreenState extends State<EntryScreen> with SingleTickerProviderStat
 
   }
 
+Set<Marker> _mapMarkers = {};
 
 
 class LightnataApp extends StatefulWidget {
@@ -131,7 +150,7 @@ class LightnataApp extends StatefulWidget {
 class _LightnataAppState extends State<LightnataApp> {
   GoogleMapController? _mapController;
   LatLng? _currentLocation;
-  Map<CircleId, Circle> _circles = {};
+  Set<Marker> _markers = {};
   List<String> _liveFeed = [];
   String announcementText = "";
 
@@ -163,6 +182,37 @@ class _LightnataAppState extends State<LightnataApp> {
 
   Future<void> _submitReport(String status) async {
     if (_currentLocation == null) return;
+
+    // BYPASS daily limit for testing
+    // SharedPreferences prefs = await SharedPreferences.getInstance();
+    // String today = DateTime.now().toIso8601String().substring(0, 10);
+    // String key = "$status-$today";
+
+    // if (prefs.getBool(key) == true) {
+    //   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("You’ve already reported $status today.")));
+    //   return;
+    // }
+
+    bool confirm = await showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text("Confirm Report"),
+        content: Text(
+          status == 'No Power'
+              ? "You are reporting an outage. Please be sure you have no power. False reports don’t help the community."
+              : status == 'Flickering'
+              ? "You are reporting flickering lights or unstable power. Please confirm."
+              : "You're reporting power has been restored. Please confirm.",
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text("Cancel")),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: Text("Confirm")),
+        ],
+      ),
+    );
+
+    if (!confirm) return;
+
     String area = await _getAreaFromLatLng(_currentLocation!.latitude, _currentLocation!.longitude);
 
     await FirebaseFirestore.instance.collection('outages').add({
@@ -173,13 +223,17 @@ class _LightnataAppState extends State<LightnataApp> {
       'area': area,
     });
 
+    // await prefs.setBool(key, true); // Commented out for testing
+
     setState(() {
       _liveFeed.insert(0, "$area - $status at ${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}");
       if (_liveFeed.length > 5) _liveFeed.removeLast();
     });
   }
+
+
   void _listenToReports() {
-    FirebaseFirestore.instance.collection('outages').snapshots().listen((snapshot) {
+    FirebaseFirestore.instance.collection('outages').snapshots().listen((snapshot) async {
       Map<String, List<Map<String, dynamic>>> grouped = {};
       for (var doc in snapshot.docs) {
         var data = doc.data();
@@ -187,36 +241,41 @@ class _LightnataAppState extends State<LightnataApp> {
         grouped.putIfAbsent(key, () => []).add(data);
       }
 
-      Map<CircleId, Circle> newCircles = {};
-      grouped.forEach((key, reports) {
-        if (reports.length < 10) return;
+      Set<Marker> newMarkers = {};
+
+      for (var entry in grouped.entries) {
+        var reports = entry.value;
+        if (reports.length < 1) continue;
 
         double avgLat = reports.map((r) => r['lat']).reduce((a, b) => a + b) / reports.length;
         double avgLng = reports.map((r) => r['lng']).reduce((a, b) => a + b) / reports.length;
         String latestStatus = reports.last['status'];
 
-        Color color;
-        if (latestStatus == 'No Power') color = Colors.red;
-        else if (latestStatus == 'Flickering') color = Colors.yellow;
-        else color = Colors.green;
+        String assetPath;
+        if (latestStatus == 'No Power') assetPath = 'assets/out.png';
+        else if (latestStatus == 'Flickering') assetPath = 'assets/flicker.png';
+        else assetPath = 'assets/restore.png';
 
-        final circle = Circle(
-          circleId: CircleId(key),
-          center: LatLng(avgLat, avgLng),
-          radius: 100 + (reports.length * 8),
-          fillColor: color.withOpacity(0.4),
-          strokeWidth: 2,
-          strokeColor: color.withOpacity(0.8),
+        final BitmapDescriptor icon = await BitmapDescriptor.fromAssetImage(
+          ImageConfiguration(size: Size(48, 48)),
+          assetPath,
         );
 
-        newCircles[circle.circleId] = circle;
-      });
+        newMarkers.add(Marker(
+          markerId: MarkerId(entry.key),
+          position: LatLng(avgLat, avgLng),
+          icon: icon,
+          infoWindow: InfoWindow(title: latestStatus),
+        ));
+      }
 
       setState(() {
-        _circles = newCircles;
+        _mapMarkers = newMarkers;
       });
     });
   }
+
+
 
   void _listenToAnnouncements() {
     FirebaseFirestore.instance
@@ -314,9 +373,10 @@ class _LightnataAppState extends State<LightnataApp> {
     onMapCreated: (controller) => _mapController = controller,
     initialCameraPosition: CameraPosition(target: _currentLocation!, zoom: 14),
     myLocationEnabled: true,
-    circles: Set.from(_circles.values),
+    markers: _mapMarkers,
     ),
     ),
+
                 Wrap(
                   spacing: 10,
                   children: [
@@ -346,9 +406,28 @@ class _LightnataAppState extends State<LightnataApp> {
                       ..._liveFeed.map((e) => Text("• $e")),
                       SizedBox(height: 15),
                       Text("Legend:", style: TextStyle(fontWeight: FontWeight.bold)),
-                      Row(children: [Icon(Icons.circle, color: Colors.red), Text(" No Power")]),
-                      Row(children: [Icon(Icons.circle, color: Colors.yellow), Text(" Flickering")]),
-                      Row(children: [Icon(Icons.circle, color: Colors.green), Text(" Power Restored")]),
+                      Row(
+                        children: [
+                          Image.asset('assets/out.png', height: 24),
+                          SizedBox(width: 8),
+                          Text(" No Power"),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          Image.asset('assets/flicker.png', height: 24),
+                          SizedBox(width: 8),
+                          Text(" Flickering"),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          Image.asset('assets/restore.png', height: 24),
+                          SizedBox(width: 8),
+                          Text(" Power Restored"),
+                        ],
+                      ),
+
                     ],
                   ),
                 ),
@@ -610,3 +689,4 @@ class _SlidingAnnouncementState extends State<SlidingAnnouncement>
     );
   }
 }
+
