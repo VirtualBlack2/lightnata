@@ -15,6 +15,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'dart:ui' as ui;
+
 
 
 void main() async {
@@ -67,6 +69,8 @@ class _EntryScreenState extends State<EntryScreen> with SingleTickerProviderStat
       upperBound: 1.1,
     )..repeat(reverse: true);
   }
+
+
 
   @override
   void dispose() {
@@ -136,7 +140,7 @@ class _EntryScreenState extends State<EntryScreen> with SingleTickerProviderStat
 
   }
 
-Set<Marker> _mapMarkers = {};
+
 
 
 class LightnataApp extends StatefulWidget {
@@ -147,12 +151,17 @@ class LightnataApp extends StatefulWidget {
   State<LightnataApp> createState() => _LightnataAppState();
 }
 
-class _LightnataAppState extends State<LightnataApp> {
+Set<Marker> _mapMarkers = {};
+
+
+class _LightnataAppState extends State<LightnataApp> with TickerProviderStateMixin {
+
   GoogleMapController? _mapController;
   LatLng? _currentLocation;
-  Set<Marker> _markers = {};
   List<String> _liveFeed = [];
   String announcementText = "";
+  List<AnimatedCircle> _animatedCircles = [];
+
 
   @override
   void initState() {
@@ -160,7 +169,31 @@ class _LightnataAppState extends State<LightnataApp> {
     _determinePosition();
     _listenToReports();
     _listenToAnnouncements();
+
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      print('📲 Push received in foreground: ${message.notification?.title}');
+      if (message.notification != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("📢 ${message.notification!.body}")),
+        );
+      }
+    });
   }
+
+  Set<Circle> _buildRippleCircles() {
+    return _animatedCircles.map((anim) {
+      return Circle(
+        circleId: CircleId(anim.position.toString()),
+        center: anim.position,
+        radius: anim.radius.value,
+        fillColor: anim.color.withOpacity(0.3),
+        strokeColor: anim.color.withOpacity(0.7),
+        strokeWidth: 2,
+      );
+    }).toSet();
+  }
+
+
 
   Future<void> _determinePosition() async {
     LocationPermission permission = await Geolocator.requestPermission();
@@ -242,30 +275,37 @@ class _LightnataAppState extends State<LightnataApp> {
       }
 
       Set<Marker> newMarkers = {};
+      _animatedCircles.forEach((c) => c.dispose()); // cleanup
+      _animatedCircles.clear();
 
       for (var entry in grouped.entries) {
-        var reports = entry.value;
-        if (reports.length < 1) continue;
+        var reports = entry.value.where((r) => r['lat'] != null && r['lng'] != null).toList();
+        if (reports.isEmpty) continue;
 
-        double avgLat = reports.map((r) => r['lat']).reduce((a, b) => a + b) / reports.length;
-        double avgLng = reports.map((r) => r['lng']).reduce((a, b) => a + b) / reports.length;
+        double avgLat = reports.map((r) => r['lat'] as double).reduce((a, b) => a + b) / reports.length;
+        double avgLng = reports.map((r) => r['lng'] as double).reduce((a, b) => a + b) / reports.length;
+
         String latestStatus = reports.last['status'];
+        int count = reports.length;
 
-        String assetPath;
-        if (latestStatus == 'No Power') assetPath = 'assets/out.png';
-        else if (latestStatus == 'Flickering') assetPath = 'assets/flicker.png';
-        else assetPath = 'assets/restore.png';
+        Color color;
+        if (latestStatus == 'No Power') color = Colors.red;
+        else if (latestStatus == 'Flickering') color = Colors.yellow;
+        else color = Colors.green;
 
-        final BitmapDescriptor icon = await BitmapDescriptor.fromAssetImage(
-          ImageConfiguration(size: Size(48, 48)),
-          assetPath,
-        );
+        final markerIcon = await _createMarkerBitmap(color, count.toString());
 
         newMarkers.add(Marker(
           markerId: MarkerId(entry.key),
           position: LatLng(avgLat, avgLng),
-          icon: icon,
-          infoWindow: InfoWindow(title: latestStatus),
+          icon: markerIcon,
+          infoWindow: InfoWindow(title: '$latestStatus - $count reports'),
+        ));
+
+        _animatedCircles.add(AnimatedCircle(
+          position: LatLng(avgLat, avgLng),
+          color: color,
+          vsync: this,
         ));
       }
 
@@ -274,6 +314,34 @@ class _LightnataAppState extends State<LightnataApp> {
       });
     });
   }
+
+
+  Future<BitmapDescriptor> _createMarkerBitmap(Color bgColor, String text) async {
+    final pictureRecorder = ui.PictureRecorder();
+    final canvas = Canvas(pictureRecorder);
+    final paint = Paint()..color = bgColor;
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+
+    const double size = 100.0;
+    canvas.drawCircle(Offset(size / 2, size / 2), size / 2, paint);
+
+    textPainter.layout();
+    textPainter.paint(
+      canvas,
+      Offset((size - textPainter.width) / 2, (size - textPainter.height) / 2),
+    );
+
+    final img = await pictureRecorder.endRecording().toImage(size.toInt(), size.toInt());
+    final data = await img.toByteData(format: ui.ImageByteFormat.png);
+    return BitmapDescriptor.fromBytes(data!.buffer.asUint8List());
+  }
+
 
 
 
@@ -374,6 +442,7 @@ class _LightnataAppState extends State<LightnataApp> {
     initialCameraPosition: CameraPosition(target: _currentLocation!, zoom: 14),
     myLocationEnabled: true,
     markers: _mapMarkers,
+      circles: _buildRippleCircles(),
     ),
     ),
 
@@ -441,6 +510,31 @@ class _LightnataAppState extends State<LightnataApp> {
 class AdminLoginScreen extends StatefulWidget {
   @override
   _AdminLoginScreenState createState() => _AdminLoginScreenState();
+
+}
+
+class AnimatedCircle {
+  final LatLng position;
+  final Color color;
+  late AnimationController controller;
+  late Animation<double> radius;
+
+  AnimatedCircle({
+    required this.position,
+    required TickerProvider vsync,
+    required this.color,
+  }) {
+    controller = AnimationController(
+      duration: Duration(seconds: 2),
+      vsync: vsync,
+    )..repeat(reverse: true);
+
+    radius = Tween<double>(begin: 100, end: 200).animate(
+      CurvedAnimation(parent: controller, curve: Curves.easeOut),
+    );
+  }
+
+  void dispose() => controller.dispose();
 }
 
 class _AdminLoginScreenState extends State<AdminLoginScreen> {
@@ -640,53 +734,61 @@ class _SlidingAnnouncementState extends State<SlidingAnnouncement>
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 40,
-      color: Colors.green,
-      padding: EdgeInsets.symmetric(horizontal: 10),
-      child: Row(
-        children: [
-          // Fixed NAWEC logo filling the height
-          Container(
-            height: double.infinity,
-            width: 40,
-            child: Image.asset('assets/nawec.jpg', fit: BoxFit.cover),
-          ),
-          SizedBox(width: 10),
 
-          // Sliding or Static text
-          Expanded(
-            child: isPaused
-                ? Text(
-              "📢 ${widget.text}",
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
-            )
-                : ClipRect(
-              child: SlideTransition(
-                position: _animation,
-                child: Row(
-                  children: [
-                    Text(
+@override
+Widget build(BuildContext context) {
+  return Container(
+    height: 40,
+    color: Colors.green,
+    padding: EdgeInsets.symmetric(horizontal: 10),
+    child: Row(
+      children: [
+        // NAWEC Logo
+        Container(
+          height: double.infinity,
+          width: 40,
+          child: Image.asset('assets/nawec.jpg', fit: BoxFit.cover),
+        ),
+        SizedBox(width: 10),
+
+        // Sliding or Static Text
+        Expanded(
+          child: isPaused
+              ? Text(
+            "📢 ${widget.text}",
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
+            overflow: TextOverflow.fade,
+            softWrap: false,
+          )
+              : ClipRect(
+            child: SlideTransition(
+              position: _animation,
+              child: Row(
+                children: [
+                  Flexible(
+                    child: Text(
                       "📢 ${widget.text}",
                       style: TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
                       ),
+                      overflow: TextOverflow.fade,
+                      softWrap: false,
                     ),
-                    SizedBox(width: 30),
-                  ],
-                ),
+                  ),
+                  SizedBox(width: 30),
+                ],
               ),
             ),
           ),
-        ],
-      ),
-    );
-  }
+        ),
+      ],
+    ),
+  );
 }
+}
+
 

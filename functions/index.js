@@ -1,27 +1,23 @@
-const functions = require("firebase-functions");
-const admin = require("firebase-admin");
-const fetch = require("node-fetch");
+const { onDocumentWritten } = require("firebase-functions/v2/firestore");
+const { initializeApp } = require("firebase-admin/app");
+const { getMessaging } = require("firebase-admin/messaging");
 
-admin.initializeApp();
+initializeApp();
 
-exports.sendAnnouncementNotification = functions.firestore
-  .document("announcements/{announcementId}")
-  .onCreate(async (snap, context) => {
-    const data = snap.data();
-    const messageText = data.text;
+exports.sendPushNotification = onDocumentWritten("announcements/latest", (event) => {
+  const after = event.data.after?.data();
 
-    const payload = {
-      notification: {
-        title: "📢 New Announcement",
-        body: messageText,
-      },
-      topic: "announcements", // All devices subscribed to 'announcements' will get this
-    };
+  if (!after || !after.text) return;
 
-    try {
-      await admin.messaging().send(payload);
-      console.log("✅ Notification sent successfully");
-    } catch (error) {
-      console.error("❌ Error sending notification:", error);
-    }
-  });
+  const payload = {
+    notification: {
+      title: "📢 NAWEC ANNOUNCEMENT",
+      body: after.text,
+    },
+    topic: "announcements",
+  };
+
+  return getMessaging().send(payload)
+    .then(res => console.log("✅ Push sent:", res))
+    .catch(err => console.error("❌ Push error:", err));
+});
