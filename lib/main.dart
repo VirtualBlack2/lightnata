@@ -1,3 +1,4 @@
+// ──────────────────────────────────────────────────────────────────────────────
 // pubspec.yaml dependencies:
 // firebase_core: ^2.32.0
 // cloud_firestore: ^5.6.6
@@ -6,7 +7,11 @@
 // geolocator: ^10.1.0
 // geocoding: ^2.2.0
 // marquee: ^2.2.3
+// ──────────────────────────────────────────────────────────────────────────────
 
+// ──────────────────────────────────────────────────────────────────────────────
+// Imports
+// ──────────────────────────────────────────────────────────────────────────────
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -16,503 +21,121 @@ import 'package:geocoding/geocoding.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'dart:ui' as ui;
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
-
-
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
-  try {
-    await Firebase.initializeApp();
-    print('✅ Firebase initialized');
-
-    await FirebaseMessaging.instance.requestPermission();
-    print('✅ Notification permission granted');
-
-    await FirebaseMessaging.instance.subscribeToTopic('announcements');
-    print('✅ Subscribed to topic');
-
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    String? savedName = prefs.getString("username");
-    print('✅ Username check complete: $savedName');
-
-    runApp(MaterialApp(
-      home: savedName != null ? LightnataApp(userName: savedName) : EntryScreen(),
-      debugShowCheckedModeBanner: false,
-    ));
-  } catch (e, stacktrace) {
-    print('❌ ERROR in main(): $e');
-    print(stacktrace);
-  }
-}
-
-
-
-class EntryScreen extends StatefulWidget {
-  @override
-  State<EntryScreen> createState() => _EntryScreenState();
-}
-
-class _EntryScreenState extends State<EntryScreen> with SingleTickerProviderStateMixin {
-  final TextEditingController _controller = TextEditingController();
-  bool _showGreeting = false;
-
-  late AnimationController _bounceController;
-
-  @override
-  void initState() {
-    super.initState();
-    _bounceController = AnimationController(
-      vsync: this,
-      duration: Duration(milliseconds: 1000),
-      lowerBound: 0.9,
-      upperBound: 1.1,
-    )..repeat(reverse: true);
-  }
-
-
-
-  @override
-  void dispose() {
-    _bounceController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: _showGreeting
-            ? Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text("That's an awesome name,", style: TextStyle(fontSize: 20)),
-            Text(
-              _controller.text,
-              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pushReplacement(
-                  context,
-                  PageRouteBuilder(
-                    transitionDuration: Duration(milliseconds: 600),
-                    pageBuilder: (_, __, ___) => LightnataApp(userName: _controller.text),
-                    transitionsBuilder: (_, animation, __, child) {
-                      return FadeTransition(opacity: animation, child: child);
-                    },
-                  ),
-                );
-              },
-              child: Text("Continue"),
-            ),
-          ],
-        )
-            : Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            ScaleTransition(
-              scale: _bounceController,
-              child: Text(
-                "Hello!",
-                style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.green),
-              ),
-            ),
-            SizedBox(height: 20),
-            Text("What should we call you?"),
-            Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: TextField(
-                controller: _controller,
-                decoration: InputDecoration(labelText: "Name"),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () => setState(() => _showGreeting = true),
-              child: Text("Submit"),
-            )
-          ],
-        ),
-      ),
-    );
-  }
-
-  }
-
-
-
-
-class LightnataApp extends StatefulWidget {
+// ──────────────────────────────────────────────────────────────────────────────
+// Welcome‐back Splash Screen
+// ──────────────────────────────────────────────────────────────────────────────
+class WelcomeBackScreen extends StatefulWidget {
   final String userName;
-  LightnataApp({required this.userName});
+  const WelcomeBackScreen({Key? key, required this.userName}) : super(key: key);
 
   @override
-  State<LightnataApp> createState() => _LightnataAppState();
+  _WelcomeBackScreenState createState() => _WelcomeBackScreenState();
 }
 
-Set<Marker> _mapMarkers = {};
-
-
-class _LightnataAppState extends State<LightnataApp> with TickerProviderStateMixin {
-
-  GoogleMapController? _mapController;
+class _WelcomeBackScreenState extends State<WelcomeBackScreen> {
+  String _weather = '';
+  bool _isDay = true;
   LatLng? _currentLocation;
-  List<String> _liveFeed = [];
-  String announcementText = "";
-  List<AnimatedCircle> _animatedCircles = [];
-
 
   @override
   void initState() {
     super.initState();
-    _determinePosition();
-    _listenToReports();
-    _listenToAnnouncements();
-
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      print('📲 Push received in foreground: ${message.notification?.title}');
-      if (message.notification != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("📢 ${message.notification!.body}")),
-        );
-      }
-    });
+    _determinePosition().then((_) => _fetchWeather());
   }
-
-  Set<Circle> _buildRippleCircles() {
-    return _animatedCircles.map((anim) {
-      return Circle(
-        circleId: CircleId(anim.position.toString()),
-        center: anim.position,
-        radius: anim.radius.value,
-        fillColor: anim.color.withOpacity(0.3),
-        strokeColor: anim.color.withOpacity(0.7),
-        strokeWidth: 2,
-      );
-    }).toSet();
-  }
-
-
 
   Future<void> _determinePosition() async {
-    LocationPermission permission = await Geolocator.requestPermission();
-    if (permission == LocationPermission.denied) return;
-    Position position = await Geolocator.getCurrentPosition();
+    final perm = await Geolocator.requestPermission();
+    if (perm == LocationPermission.denied) return;
+    Position pos = await Geolocator.getCurrentPosition();
     setState(() {
-      _currentLocation = LatLng(position.latitude, position.longitude);
+      _currentLocation = LatLng(pos.latitude, pos.longitude);
     });
   }
 
-  Future<String> _getAreaFromLatLng(double lat, double lng) async {
-    List<Placemark> placemarks = await placemarkFromCoordinates(lat, lng);
-    if (placemarks.isNotEmpty) {
-      Placemark place = placemarks[0];
-      return place.locality ?? place.subAdministrativeArea ?? "Unknown Area";
-    }
-    return "Unknown Area";
-  }
-
-  Future<void> _submitReport(String status) async {
+  Future<void> _fetchWeather() async {
     if (_currentLocation == null) return;
-
-    // BYPASS daily limit for testing
-    // SharedPreferences prefs = await SharedPreferences.getInstance();
-    // String today = DateTime.now().toIso8601String().substring(0, 10);
-    // String key = "$status-$today";
-
-    // if (prefs.getBool(key) == true) {
-    //   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("You’ve already reported $status today.")));
-    //   return;
-    // }
-
-    bool confirm = await showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text("Confirm Report"),
-        content: Text(
-          status == 'No Power'
-              ? "You are reporting an outage. Please be sure you have no power. False reports don’t help the community."
-              : status == 'Flickering'
-              ? "You are reporting flickering lights or unstable power. Please confirm."
-              : "You're reporting power has been restored. Please confirm.",
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: Text("Cancel")),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: Text("Confirm")),
-        ],
-      ),
+    final lat = _currentLocation!.latitude;
+    final lon = _currentLocation!.longitude;
+    final url = Uri.parse(
+      'https://api.open-meteo.com/v1/forecast'
+          '?latitude=$lat&longitude=$lon'
+          '&current_weather=true&temperature_unit=fahrenheit',
     );
-
-    if (!confirm) return;
-
-    String area = await _getAreaFromLatLng(_currentLocation!.latitude, _currentLocation!.longitude);
-
-    await FirebaseFirestore.instance.collection('outages').add({
-      'lat': _currentLocation!.latitude,
-      'lng': _currentLocation!.longitude,
-      'status': status,
-      'timestamp': Timestamp.now(),
-      'area': area,
-    });
-
-    // await prefs.setBool(key, true); // Commented out for testing
-
-    setState(() {
-      _liveFeed.insert(0, "$area - $status at ${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}");
-      if (_liveFeed.length > 5) _liveFeed.removeLast();
-    });
-  }
-
-
-  void _listenToReports() {
-    FirebaseFirestore.instance.collection('outages').snapshots().listen((snapshot) async {
-      Map<String, List<Map<String, dynamic>>> grouped = {};
-      for (var doc in snapshot.docs) {
-        var data = doc.data();
-        var key = data['area'] ?? "${data['lat']},${data['lng']}";
-        grouped.putIfAbsent(key, () => []).add(data);
-      }
-
-      Set<Marker> newMarkers = {};
-      _animatedCircles.forEach((c) => c.dispose()); // cleanup
-      _animatedCircles.clear();
-
-      for (var entry in grouped.entries) {
-        var reports = entry.value.where((r) => r['lat'] != null && r['lng'] != null).toList();
-        if (reports.isEmpty) continue;
-
-        double avgLat = reports.map((r) => r['lat'] as double).reduce((a, b) => a + b) / reports.length;
-        double avgLng = reports.map((r) => r['lng'] as double).reduce((a, b) => a + b) / reports.length;
-
-        String latestStatus = reports.last['status'];
-        int count = reports.length;
-
-        Color color;
-        if (latestStatus == 'No Power') color = Colors.red;
-        else if (latestStatus == 'Flickering') color = Colors.yellow;
-        else color = Colors.green;
-
-        final markerIcon = await _createMarkerBitmap(color, count.toString());
-
-        newMarkers.add(Marker(
-          markerId: MarkerId(entry.key),
-          position: LatLng(avgLat, avgLng),
-          icon: markerIcon,
-          infoWindow: InfoWindow(title: '$latestStatus - $count reports'),
-        ));
-
-        _animatedCircles.add(AnimatedCircle(
-          position: LatLng(avgLat, avgLng),
-          color: color,
-          vsync: this,
-        ));
-      }
-
+    final res = await http.get(url);
+    if (res.statusCode == 200) {
+      final data = json.decode(res.body);
+      final t = (data['current_weather']['temperature'] as num).round();
+      final h = DateTime.now().hour;
       setState(() {
-        _mapMarkers = newMarkers;
+        _weather = '$t°F';
+        _isDay = h >= 6 && h < 18;
       });
+    }
+    // after 2s splash, go to main app
+    Future.delayed(Duration(seconds: 2), () {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => LightnataApp(userName: widget.userName),
+        ),
+      );
     });
-  }
-
-
-  Future<BitmapDescriptor> _createMarkerBitmap(Color bgColor, String text) async {
-    final pictureRecorder = ui.PictureRecorder();
-    final canvas = Canvas(pictureRecorder);
-    final paint = Paint()..color = bgColor;
-    final textPainter = TextPainter(
-      text: TextSpan(
-        text: text,
-        style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
-      ),
-      textDirection: TextDirection.ltr,
-    );
-
-    const double size = 100.0;
-    canvas.drawCircle(Offset(size / 2, size / 2), size / 2, paint);
-
-    textPainter.layout();
-    textPainter.paint(
-      canvas,
-      Offset((size - textPainter.width) / 2, (size - textPainter.height) / 2),
-    );
-
-    final img = await pictureRecorder.endRecording().toImage(size.toInt(), size.toInt());
-    final data = await img.toByteData(format: ui.ImageByteFormat.png);
-    return BitmapDescriptor.fromBytes(data!.buffer.asUint8List());
-  }
-
-
-
-
-  void _listenToAnnouncements() {
-    FirebaseFirestore.instance
-        .collection('announcements')
-        .doc('latest') // This always watches the latest published announcement
-        .snapshots()
-        .listen((snapshot) {
-      if (snapshot.exists && snapshot.data() != null) {
-        setState(() {
-          announcementText = snapshot.data()!['text'] ?? "";
-        });
-      }
-    });
-  }
-
-
-
-  String _greeting() {
-    int hour = DateTime.now().hour;
-    if (hour < 12) return "Good Morning";
-    if (hour < 17) return "Good Afternoon";
-    return "Good Evening";
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: Text('LightNata'),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.lock_open),
-            onPressed: () {
-              TextEditingController _adminPassController = TextEditingController();
-
-              showDialog(
-                context: context,
-                builder: (_) => AlertDialog(
-                  title: Text("Admin Access"),
-                  content: TextField(
-                    controller: _adminPassController,
-                    obscureText: true,
-                    decoration: InputDecoration(labelText: "Enter Admin Password"),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: Text("Cancel"),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        if (_adminPassController.text == "123") {
-                          Navigator.pop(context); // close dialog
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => AdminLoginScreen()),
-                          );
-                        } else {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text("Wrong password")),
-                          );
-                        }
-                      },
-                      child: Text("Enter"),
-                    ),
-                  ],
-                ),
-              );
-            },
-          )
-
-        ],
-      ),
-      body: _currentLocation == null
-          ? Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-          child: Column(
-              children: [
-              SizedBox(height: 10),
-          Text("${_greeting()}, ${widget.userName}", style: TextStyle(fontSize: 20)),
-          SizedBox(height: 10),
-                if (announcementText.isNotEmpty)
-                  SlidingAnnouncement(text: announcementText),
-
-
-    Padding(
-    padding: const EdgeInsets.all(12.0),
-    child: Text("Is your power out?", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-    ),
-    SizedBox(
-    height: 400,
-    child: GoogleMap(
-    onMapCreated: (controller) => _mapController = controller,
-    initialCameraPosition: CameraPosition(target: _currentLocation!, zoom: 14),
-    myLocationEnabled: true,
-    markers: _mapMarkers,
-      circles: _buildRippleCircles(),
-    ),
-    ),
-
-                Wrap(
-                  spacing: 10,
-                  children: [
-                    ElevatedButton(
-                      onPressed: () => _submitReport('No Power'),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                      child: Text('Report Outage', style: TextStyle(color: Colors.black)),
-                    ),
-                    ElevatedButton(
-                      onPressed: () => _submitReport('Flickering'),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.yellow),
-                      child: Text('Flickering', style: TextStyle(color: Colors.black)),
-                    ),
-                    ElevatedButton(
-                      onPressed: () => _submitReport('Power Restored'),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                      child: Text('Power Restored', style: TextStyle(color: Colors.black)),
-                    ),
-                  ],
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(12.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("Live Feed:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      ..._liveFeed.map((e) => Text("• $e")),
-                      SizedBox(height: 15),
-                      Text("Legend:", style: TextStyle(fontWeight: FontWeight.bold)),
-                      Row(
-                        children: [
-                          Image.asset('assets/out.png', height: 24),
-                          SizedBox(width: 8),
-                          Text(" No Power"),
-                        ],
-                      ),
-                      Row(
-                        children: [
-                          Image.asset('assets/flicker.png', height: 24),
-                          SizedBox(width: 8),
-                          Text(" Flickering"),
-                        ],
-                      ),
-                      Row(
-                        children: [
-                          Image.asset('assets/restore.png', height: 24),
-                          SizedBox(width: 8),
-                          Text(" Power Restored"),
-                        ],
-                      ),
-
-                    ],
-                  ),
-                ),
-              ],
-          ),
+      body: Center(
+        child: _weather.isEmpty
+            ? CircularProgressIndicator()
+            : Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Welcome back ${widget.userName}!',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'The weather is $_weather ${_isDay ? '☀️' : '🌙'}',
+              style: TextStyle(fontSize: 20),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-class AdminLoginScreen extends StatefulWidget {
-  @override
-  _AdminLoginScreenState createState() => _AdminLoginScreenState();
-
+// ──────────────────────────────────────────────────────────────────────────────
+// main()
+// ──────────────────────────────────────────────────────────────────────────────
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await Firebase.initializeApp();
+    await FirebaseMessaging.instance.requestPermission();
+    await FirebaseMessaging.instance.subscribeToTopic('announcements');
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? savedName = prefs.getString('username');
+    runApp(MaterialApp(
+      home: savedName == null
+          ? EntryScreen()
+          : WelcomeBackScreen(userName: savedName),
+      debugShowCheckedModeBanner: false,
+    ));
+  } catch (e) {
+    print('Initialization error: $e');
+  }
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// AnimatedPulseCircle Model
+// ──────────────────────────────────────────────────────────────────────────────
 class AnimatedCircle {
   final LatLng position;
   final Color color;
@@ -537,10 +160,529 @@ class AnimatedCircle {
   void dispose() => controller.dispose();
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// EntryScreen (new users)
+// ──────────────────────────────────────────────────────────────────────────────
+class EntryScreen extends StatefulWidget {
+  @override
+  _EntryScreenState createState() => _EntryScreenState();
+}
+
+class _EntryScreenState extends State<EntryScreen>
+    with SingleTickerProviderStateMixin {
+  final TextEditingController _controller = TextEditingController();
+  bool _showGreeting = false;
+  late AnimationController _bounceController;
+
+  @override
+  void initState() {
+    super.initState();
+    _bounceController = AnimationController(
+      vsync: this,
+      duration: Duration(milliseconds: 1000),
+      lowerBound: 0.9,
+      upperBound: 1.1,
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _bounceController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: _showGreeting
+            ? Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text("That's an awesome name,", style: TextStyle(fontSize: 20)),
+            Text(
+              _controller.text,
+              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () async {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setString('username', _controller.text);
+                Navigator.pushReplacement(
+                  context,
+                  PageRouteBuilder(
+                    transitionDuration: Duration(milliseconds: 600),
+                    pageBuilder: (_, __, ___) =>
+                        WelcomeBackScreen(userName: _controller.text),
+                    transitionsBuilder: (_, animation, __, child) =>
+                        FadeTransition(opacity: animation, child: child),
+                  ),
+                );
+              },
+              child: Text("Continue"),
+            ),
+          ],
+        )
+            : Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            ScaleTransition(
+              scale: _bounceController,
+              child: Text(
+                "Hello!",
+                style: TextStyle(
+                    fontSize: 32, fontWeight: FontWeight.bold, color: Colors.green),
+              ),
+            ),
+            SizedBox(height: 20),
+            Text("What should we call you?"),
+            Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: TextField(
+                controller: _controller,
+                decoration: InputDecoration(labelText: "Name"),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () => setState(() => _showGreeting = true),
+              child: Text("Submit"),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// LightnataApp (main dashboard)
+// ──────────────────────────────────────────────────────────────────────────────
+class LightnataApp extends StatefulWidget {
+  final String userName;
+  LightnataApp({required this.userName});
+  @override
+  _LightnataAppState createState() => _LightnataAppState();
+}
+
+Set<Marker> _mapMarkers = {}; // global for simplicity
+
+class _LightnataAppState extends State<LightnataApp>
+    with TickerProviderStateMixin {
+  GoogleMapController? _mapController;
+  LatLng? _currentLocation;
+  List<String> _liveFeed = [];
+  String announcementText = "";
+  List<AnimatedCircle> _animatedCircles = [];
+  String _weather = '';
+  bool _isDaytime = true;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // 1️⃣ Start listening for announcements & push messages immediately
+    _listenToAnnouncements();
+    FirebaseMessaging.onMessage.listen((RemoteMessage msg) {
+      final body = msg.notification?.body;
+      if (body != null) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(body)));
+      }
+    });
+
+    // 2️⃣ Get the user’s location, then…
+    _determinePosition().then((_) {
+      if (_currentLocation != null) {
+        // — add a blue test pulse around them —
+        final test = AnimatedCircle(
+          position: _currentLocation!,
+          vsync: this,
+          color: Colors.blue,
+        );
+        test.controller.addListener(() => setState(() {}));
+        _animatedCircles.add(test);
+      }
+
+      // — now start your real features —
+      _listenToReports();
+      _fetchWeather();
+    });
+  }
+
+
+  @override
+  void dispose() {
+    for (var ac in _animatedCircles) ac.dispose();
+    super.dispose();
+  }
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Weather fetch
+  // ────────────────────────────────────────────────────────────────────────────
+  Future<void> _fetchWeather() async {
+    if (_currentLocation == null) return;
+    final lat = _currentLocation!.latitude;
+    final lon = _currentLocation!.longitude;
+    final url = Uri.parse(
+      'https://api.open-meteo.com/v1/forecast'
+          '?latitude=$lat&longitude=$lon'
+          '&current_weather=true&temperature_unit=fahrenheit',
+    );
+    final res = await http.get(url);
+    if (res.statusCode == 200) {
+      final data = json.decode(res.body);
+      final temp = (data['current_weather']['temperature'] as num).round();
+      final hour = DateTime.now().hour;
+      setState(() {
+        _weather = '$temp°F';
+        _isDaytime = hour >= 6 && hour < 18;
+      });
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Location helpers
+  // ────────────────────────────────────────────────────────────────────────────
+  Future<void> _determinePosition() async {
+    var perm = await Geolocator.requestPermission();
+    if (perm == LocationPermission.denied) return;
+    var pos = await Geolocator.getCurrentPosition();
+    setState(() {
+      _currentLocation = LatLng(pos.latitude, pos.longitude);
+    });
+  }
+
+  Future<String> _getAreaFromLatLng(double lat, double lng) async {
+    var places = await placemarkFromCoordinates(lat, lng);
+    if (places.isNotEmpty) {
+      var p = places.first;
+      return p.locality ?? p.subAdministrativeArea ?? "Unknown Area";
+    }
+    return "Unknown Area";
+  }
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Announcements listener
+  // ────────────────────────────────────────────────────────────────────────────
+  void _listenToAnnouncements() {
+    FirebaseFirestore.instance
+        .collection('announcements')
+        .doc('latest')
+        .snapshots()
+        .listen((snap) {
+      if (snap.exists) {
+        setState(() => announcementText = snap.data()?['text'] ?? "");
+      }
+    });
+  }
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Reports listener + pulsing circles + markers
+  // ────────────────────────────────────────────────────────────────────────────
+  void _listenToReports() {
+    FirebaseFirestore.instance
+        .collection('outages')
+        .snapshots()
+        .listen((snapshot) {
+      // 1) Group the last 5m of docs by rounded lat/lng
+      final now = DateTime.now();
+      final cutoff = now.subtract(Duration(minutes: 5));
+      final grouped = <String, List<Map<String, dynamic>>>{};
+
+      for (var doc in snapshot.docs) {
+        final data = doc.data();
+        final ts = (data['timestamp'] as Timestamp?)?.toDate();
+        if (ts == null || ts.isBefore(cutoff)) continue;
+
+        final lat = (data['lat'] as num).toDouble();
+        final lng = (data['lng'] as num).toDouble();
+        final key = "${lat.toStringAsFixed(3)},${lng.toStringAsFixed(3)}";
+
+        grouped.putIfAbsent(key, () => []).add(data);
+      }
+
+      // 2) Tear down old markers & pulses
+      _mapMarkers.clear();
+      for (var ac in _animatedCircles) ac.dispose();
+      _animatedCircles.clear();
+
+      // 3) For each cluster: sort → compute center + color → add marker + pulse
+      for (var entry in grouped.entries) {
+        final reps = entry.value
+          ..sort((a, b) {
+            return (a['timestamp'] as Timestamp)
+                .toDate()
+                .compareTo((b['timestamp'] as Timestamp).toDate());
+          });
+
+        final avgLat = reps
+            .map((r) => (r['lat'] as num).toDouble())
+            .reduce((a, b) => a + b) /
+            reps.length;
+        final avgLng = reps
+            .map((r) => (r['lng'] as num).toDouble())
+            .reduce((a, b) => a + b) /
+            reps.length;
+        final center = LatLng(avgLat, avgLng);
+
+        final status = reps.last['status'] as String;
+        final color = status == 'No Power'
+            ? Colors.red
+            : status == 'Flickering'
+            ? Colors.yellow
+            : Colors.green;
+
+        // tappable marker
+        _mapMarkers.add(Marker(
+          markerId: MarkerId(entry.key),
+          position: center,
+          infoWindow: InfoWindow(title: status),
+        ));
+
+        // pulsing circle
+        final ac = AnimatedCircle(position: center, vsync: this, color: color);
+        ac.controller.addListener(() => setState(() {}));
+        _animatedCircles.add(ac);
+      }
+
+      // 4) One final rebuild
+      setState(() {});
+    });
+  }
+
+
+
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Submit report + daily rate limit
+  // ────────────────────────────────────────────────────────────────────────────
+  Future<void> _submitReport(String status) async {
+    if (_currentLocation == null) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text("Confirm Report"),
+        content: Text("Confirm $status?"),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text("Cancel")),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: Text("Yes")),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    final area = await _getAreaFromLatLng(_currentLocation!.latitude, _currentLocation!.longitude);
+    final prefs = await SharedPreferences.getInstance();
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    final key = '$area-$today';
+    if (prefs.getBool(key) == true) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("You’ve already reported today in $area.")));
+      return;
+    }
+    await prefs.setBool(key, true);
+
+    await FirebaseFirestore.instance.collection('outages').add({
+      'lat': _currentLocation!.latitude,
+      'lng': _currentLocation!.longitude,
+      'status': status,
+      'timestamp': Timestamp.now(),
+      'area': area,
+    });
+
+    setState(() {
+      _liveFeed.insert(
+        0,
+        "$area - $status at ${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}",
+      );
+      if (_liveFeed.length > 5) _liveFeed.removeLast();
+    });
+  }
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Custom marker icon (unchanged)
+  // ────────────────────────────────────────────────────────────────────────────
+  Future<BitmapDescriptor> _createMarkerBitmap(Color bg, String txt) async {
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final paint = Paint()..color = bg;
+    const size = 100.0;
+    canvas.drawCircle(Offset(size / 2, size / 2), size / 2, paint);
+    final tp = TextPainter(
+      text: TextSpan(text: txt, style: TextStyle(color: Colors.white, fontSize: 28)),
+      textDirection: TextDirection.ltr,
+    );
+    tp.layout();
+    tp.paint(canvas, Offset((size - tp.width) / 2, (size - tp.height) / 2));
+    final img = await recorder.endRecording().toImage(size.toInt(), size.toInt());
+    final bd = await img.toByteData(format: ui.ImageByteFormat.png);
+    return BitmapDescriptor.fromBytes(bd!.buffer.asUint8List());
+  }
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Build pulsing circles
+  // ────────────────────────────────────────────────────────────────────────────
+  Set<Circle> _buildRippleCircles() {
+    return _animatedCircles.map((anim) {
+      final r = anim.radius.value;      // 100→200→100
+      final fade = ((1 - (r - 100) / 100) * 0.5).clamp(0.0, 0.5);
+      return Circle(
+        circleId: CircleId(anim.position.toString()),
+        center: anim.position,
+        radius: r,
+        fillColor: anim.color.withOpacity(fade),
+        strokeWidth: 0,
+      );
+    }).toSet();
+  }
+
+
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        title: Text('LightNata'),
+        actions: [
+          IconButton(icon: Icon(Icons.lock_open), onPressed: _openAdminDialog),
+        ],
+      ),
+      body: _currentLocation == null
+          ? Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+        child: Column(
+          children: [
+            SizedBox(height: 10),
+
+            // Main greeting
+            Text("${_greeting()}, ${widget.userName}", style: TextStyle(fontSize: 20)),
+
+            // Announcement bar
+            if (announcementText.isNotEmpty) SlidingAnnouncement(text: announcementText),
+
+            // Weather badge
+            if (_weather.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Text('$_weather ${_isDaytime ? "☀️" : "🌙"}',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+                ),
+              ),
+
+            Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Text("Is your power out?",
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            ),
+
+            SizedBox(
+              height: 400,
+              child: GoogleMap(
+                onMapCreated: (ctrl) => _mapController = ctrl,
+                initialCameraPosition:
+                CameraPosition(target: _currentLocation!, zoom: 14),
+                myLocationEnabled: true,
+                markers: _mapMarkers,
+                circles: _buildRippleCircles(),
+              ),
+            ),
+
+            // Report buttons
+            Wrap(
+              spacing: 10,
+              children: [
+                ElevatedButton(
+                  onPressed: () => _submitReport('No Power'),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                  child: Text('Report Outage', style: TextStyle(color: Colors.black)),
+                ),
+                ElevatedButton(
+                  onPressed: () => _submitReport('Flickering'),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.yellow),
+                  child: Text('Flickering', style: TextStyle(color: Colors.black)),
+                ),
+                ElevatedButton(
+                  onPressed: () => _submitReport('Power Restored'),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                  child: Text('Power Restored', style: TextStyle(color: Colors.black)),
+                ),
+              ],
+            ),
+
+            // Live Feed
+            if (_liveFeed.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("Live Feed:", style: TextStyle(fontWeight: FontWeight.bold)),
+                    ..._liveFeed.map((e) => Text("• $e")),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openAdminDialog() {
+    final ctrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text("Admin Access"),
+        content: TextField(
+          controller: ctrl,
+          obscureText: true,
+          decoration: InputDecoration(labelText: "Enter Admin Password"),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Text("Cancel")),
+          TextButton(
+            onPressed: () {
+              if (ctrl.text == "123") {
+                Navigator.pop(context);
+                Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => AdminLoginScreen()));
+              } else {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(SnackBar(content: Text("Wrong password")));
+              }
+            },
+            child: Text("Enter"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _greeting() {
+    final h = DateTime.now().hour;
+    if (h < 12) return "Good Morning";
+    if (h < 17) return "Good Afternoon";
+    return "Good Evening";
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Admin Panel
+// ──────────────────────────────────────────────────────────────────────────────
+class AdminLoginScreen extends StatefulWidget {
+  @override
+  _AdminLoginScreenState createState() => _AdminLoginScreenState();
+}
+
 class _AdminLoginScreenState extends State<AdminLoginScreen> {
-  final TextEditingController _user = TextEditingController();
-  final TextEditingController _pass = TextEditingController();
-  final TextEditingController _announcement = TextEditingController();
+  final _user = TextEditingController();
+  final _pass = TextEditingController();
+  final _announcement = TextEditingController();
   bool isLoggedIn = false;
   String dropdownValue = "Select Area";
   List<String> areaOptions = [];
@@ -552,22 +694,22 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
   }
 
   void _fetchAreaOptions() async {
-    var snapshot = await FirebaseFirestore.instance.collection('outages').get();
-    Set<String> areas = {};
-    for (var doc in snapshot.docs) {
-      var data = doc.data();
-      if (data.containsKey('area')) areas.add(data['area']);
-    }
+    var snap = await FirebaseFirestore.instance.collection('outages').get();
     setState(() {
-      areaOptions = areas.toList();
+      areaOptions = snap.docs
+          .where((d) => d.data().containsKey('area'))
+          .map((d) => d.data()['area'] as String)
+          .toSet()
+          .toList();
     });
   }
 
   void _clearArea(String area) async {
-    var snapshot = await FirebaseFirestore.instance.collection('outages').where('area', isEqualTo: area).get();
-    for (var doc in snapshot.docs) {
-      await doc.reference.delete();
-    }
+    var snap = await FirebaseFirestore.instance
+        .collection('outages')
+        .where('area', isEqualTo: area)
+        .get();
+    for (var doc in snap.docs) await doc.reference.delete();
 
     await FirebaseFirestore.instance.collection('outages').add({
       'lat': 0,
@@ -577,32 +719,34 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
       'area': area,
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Area '$area' marked as restored.")));
+    final prefs = await SharedPreferences.getInstance();
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    await prefs.remove('$area-$today');
+
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text("Area '$area' marked restored.")));
   }
 
   void _publishAnnouncement(String msg) async {
     if (msg.trim().isEmpty) return;
     await FirebaseFirestore.instance
         .collection('announcements')
-        .doc('latest') // always overwrite 'latest'
+        .doc('latest')
         .set({'text': msg});
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Announcement published.")));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text("Announcement published.")));
     _announcement.clear();
-    setState(() {}); // force UI refresh
+    setState(() {});
   }
-
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
+        leading:
+        IconButton(icon: Icon(Icons.arrow_back, color: Colors.black), onPressed: () => Navigator.pop(context)),
         title: Text("NAWEC Admin Panel", style: TextStyle(color: Colors.black)),
         centerTitle: true,
       ),
@@ -614,46 +758,30 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
             children: [
               Image.asset('assets/nawec.jpg', height: 100),
               SizedBox(height: 20),
-              Text("Welcome Admin", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
-              SizedBox(height: 15),
+              Text("Welcome Admin",
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               DropdownButton<String>(
                 value: dropdownValue,
-                onChanged: (value) => setState(() => dropdownValue = value!),
-                items: areaOptions.map((area) => DropdownMenuItem(value: area, child: Text(area))).toList()
-                  ..insert(0, DropdownMenuItem(value: "Select Area", child: Text("Select Area"))),
+                onChanged: (v) => setState(() => dropdownValue = v!),
+                items: [
+                  DropdownMenuItem(value: "Select Area", child: Text("Select Area")),
+                  ...areaOptions.map((area) => DropdownMenuItem(value: area, child: Text(area))),
+                ],
               ),
               ElevatedButton(
-                onPressed: () {
-                  if (dropdownValue != "Select Area") _clearArea(dropdownValue);
-                },
-                child: Text("Report Power Restored"),
-              ),
-              SizedBox(height: 20),
+                  onPressed: () {
+                    if (dropdownValue != "Select Area") _clearArea(dropdownValue);
+                  },
+                  child: Text("Report Restored")),
               TextField(
                 controller: _announcement,
                 decoration: InputDecoration(labelText: "Enter announcement"),
               ),
-              SizedBox(height: 10),
+              ElevatedButton(onPressed: () => _publishAnnouncement(_announcement.text.trim()), child: Text("Publish")),
               ElevatedButton(
-                onPressed: () {
-                  final msg = _announcement.text.trim();
-                  if (msg.isNotEmpty) {
-                    _publishAnnouncement(msg);
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text("Announcement can't be empty"),
-                    ));
-                  }
-                },
-                child: Text("Publish"),
-              ),
-
-              SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: () => setState(() => isLoggedIn = false),
-                child: Text("Logout"),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.grey),
-              )
+                  onPressed: () => setState(() => isLoggedIn = false),
+                  child: Text("Logout"),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.grey)),
             ],
           ),
         )
@@ -661,37 +789,32 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Image.asset('assets/nawec.jpg', height: 100),
-            SizedBox(height: 20),
-            Text("ADMIN LOGIN", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: TextField(controller: _user, decoration: InputDecoration(labelText: "Username")),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: TextField(controller: _pass, decoration: InputDecoration(labelText: "Password"), obscureText: true),
-            ),
+            Text("ADMIN LOGIN",
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            TextField(controller: _user, decoration: InputDecoration(labelText: "Username")),
+            TextField(controller: _pass, obscureText: true, decoration: InputDecoration(labelText: "Password")),
             ElevatedButton(
-              onPressed: () {
-                if (_user.text == "Admin" && _pass.text == "123") {
-                  setState(() => isLoggedIn = true);
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Invalid credentials")));
-                }
-              },
-              child: Text("Login"),
-            )
+                onPressed: () {
+                  if (_user.text == "Admin" && _pass.text == "123")
+                    setState(() => isLoggedIn = true);
+                  else
+                    ScaffoldMessenger.of(context)
+                        .showSnackBar(SnackBar(content: Text("Invalid credentials")));
+                },
+                child: Text("Login")),
           ],
         ),
       ),
     );
   }
 }
-//SLIDING ANIMATION FOR ANNOUNCEMENT
+
+// ──────────────────────────────────────────────────────────────────────────────
+// SlidingAnnouncement Widget
+// ──────────────────────────────────────────────────────────────────────────────
 class SlidingAnnouncement extends StatefulWidget {
   final String text;
   const SlidingAnnouncement({required this.text});
-
   @override
   _SlidingAnnouncementState createState() => _SlidingAnnouncementState();
 }
@@ -705,17 +828,9 @@ class _SlidingAnnouncementState extends State<SlidingAnnouncement>
   @override
   void initState() {
     super.initState();
-
-    _controller = AnimationController(
-      duration: Duration(seconds: 30),
-      vsync: this,
-    );
-
-    _animation = Tween<Offset>(
-      begin: Offset(1.0, 0.0),
-      end: Offset(-1.5, 0.0),
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.linear));
-
+    _controller = AnimationController(duration: Duration(seconds: 30), vsync: this);
+    _animation = Tween<Offset>(begin: Offset(1, 0), end: Offset(-1.5, 0))
+        .animate(CurvedAnimation(parent: _controller, curve: Curves.linear));
     _startLoop();
   }
 
@@ -724,71 +839,40 @@ class _SlidingAnnouncementState extends State<SlidingAnnouncement>
       setState(() => isPaused = false);
       await _controller.forward(from: 0.0);
       setState(() => isPaused = true);
-      await Future.delayed(Duration(seconds: 60)); // stay static
+      await Future.delayed(Duration(seconds: 60));
     }
   }
 
   @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-
-@override
-Widget build(BuildContext context) {
-  return Container(
-    height: 40,
-    color: Colors.green,
-    padding: EdgeInsets.symmetric(horizontal: 10),
-    child: Row(
-      children: [
-        // NAWEC Logo
-        Container(
-          height: double.infinity,
-          width: 40,
-          child: Image.asset('assets/nawec.jpg', fit: BoxFit.cover),
-        ),
-        SizedBox(width: 10),
-
-        // Sliding or Static Text
-        Expanded(
-          child: isPaused
-              ? Text(
-            "📢 ${widget.text}",
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-            ),
-            overflow: TextOverflow.fade,
-            softWrap: false,
-          )
-              : ClipRect(
-            child: SlideTransition(
+  Widget build(BuildContext context) {
+    return Container(
+      height: 40,
+      color: Colors.green,
+      padding: EdgeInsets.symmetric(horizontal: 10),
+      child: Row(
+        children: [
+          Image.asset('assets/nawec.jpg', height: 40),
+          SizedBox(width: 10),
+          Expanded(
+            child: isPaused
+                ? Text(
+              '📢 ${widget.text}',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              overflow: TextOverflow.fade,
+              softWrap: false,
+            )
+                : SlideTransition(
               position: _animation,
-              child: Row(
-                children: [
-                  Flexible(
-                    child: Text(
-                      "📢 ${widget.text}",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      overflow: TextOverflow.fade,
-                      softWrap: false,
-                    ),
-                  ),
-                  SizedBox(width: 30),
-                ],
+              child: Text(
+                '📢 ${widget.text}',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                overflow: TextOverflow.fade,
+                softWrap: false,
               ),
             ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }
-}
-
-
