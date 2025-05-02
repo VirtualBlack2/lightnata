@@ -74,9 +74,9 @@ flutter:
 
   assets:
     - assets/nawec.jpg
-    - assets/out.png
-    - assets/flicker.png
-    - assets/restore.png
+    - assets/redcircle.png
+    - assets/yellowcircle.png
+    - assets/greencircle.png
 
 
 

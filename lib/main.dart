@@ -546,7 +546,10 @@ class _LightnataAppState extends State<LightnataApp>
       appBar: AppBar(
         title: Text('LightNata'),
         actions: [
-          IconButton(icon: Icon(Icons.lock_open), onPressed: _openAdminDialog),
+          IconButton(
+            icon: Icon(Icons.lock_open),
+            onPressed: _openAdminDialog,
+          ),
         ],
       ),
       body: _currentLocation == null
@@ -557,26 +560,41 @@ class _LightnataAppState extends State<LightnataApp>
             SizedBox(height: 10),
 
             // Main greeting
-            Text("${_greeting()}, ${widget.userName}", style: TextStyle(fontSize: 20)),
+            Text(
+              "${_greeting()}, ${widget.userName}",
+              style: TextStyle(fontSize: 20),
+            ),
 
             // Announcement bar
-            if (announcementText.isNotEmpty) SlidingAnnouncement(text: announcementText),
+            if (announcementText.isNotEmpty)
+              SlidingAnnouncement(text: announcementText),
 
             // Weather badge
             if (_weather.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Align(
                   alignment: Alignment.centerRight,
-                  child: Text('$_weather ${_isDaytime ? "☀️" : "🌙"}',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+                  child: Text(
+                    '$_weather ${_isDaytime ? "☀️" : "🌙"}',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
                 ),
               ),
 
             Padding(
               padding: const EdgeInsets.all(12.0),
-              child: Text("Is your power out?",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              child: Text(
+                "Is your power out?",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
 
             SizedBox(
@@ -597,31 +615,96 @@ class _LightnataAppState extends State<LightnataApp>
               children: [
                 ElevatedButton(
                   onPressed: () => _submitReport('No Power'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                  child: Text('Report Outage', style: TextStyle(color: Colors.black)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                  ),
+                  child: Text(
+                    'Report Outage',
+                    style: TextStyle(color: Colors.black),
+                  ),
                 ),
                 ElevatedButton(
                   onPressed: () => _submitReport('Flickering'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.yellow),
-                  child: Text('Flickering', style: TextStyle(color: Colors.black)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.yellow,
+                  ),
+                  child: Text(
+                    'Flickering',
+                    style: TextStyle(color: Colors.black),
+                  ),
                 ),
                 ElevatedButton(
                   onPressed: () => _submitReport('Power Restored'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                  child: Text('Power Restored', style: TextStyle(color: Colors.black)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                  ),
+                  child: Text(
+                    'Power Restored',
+                    style: TextStyle(color: Colors.black),
+                  ),
                 ),
               ],
             ),
 
-            // Live Feed
+            // Live Feed + Status legend
             if (_liveFeed.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.all(12.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("Live Feed:", style: TextStyle(fontWeight: FontWeight.bold)),
+                    // Live Feed
+                    Text(
+                      "Live Feed:",
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
                     ..._liveFeed.map((e) => Text("• $e")),
+                    SizedBox(height: 16),
+
+                    // Status legend
+                    Text(
+                      "Statuses:",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Image.asset(
+                          'assets/redcircle.png',
+                          width: 24,
+                          height: 24,
+                        ),
+                        SizedBox(width: 8),
+                        Text("Power Outage"),
+                      ],
+                    ),
+                    SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Image.asset(
+                          'assets/yellowcircle.png',
+                          width: 24,
+                          height: 24,
+                        ),
+                        SizedBox(width: 8),
+                        Text("Unstable Power"),
+                      ],
+                    ),
+                    SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Image.asset(
+                          'assets/greencircle.png',
+                          width: 24,
+                          height: 24,
+                        ),
+                        SizedBox(width: 8),
+                        Text("Power Restored"),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -630,6 +713,7 @@ class _LightnataAppState extends State<LightnataApp>
       ),
     );
   }
+
 
   void _openAdminDialog() {
     final ctrl = TextEditingController();
@@ -876,3 +960,5 @@ class _SlidingAnnouncementState extends State<SlidingAnnouncement>
     );
   }
 }
+
+

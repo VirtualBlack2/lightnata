@@ -22,9 +22,10 @@ class AnimatedCircle {
       vsync: vsync,
     )..repeat(reverse: true);
 
-    radius = Tween<double>(begin: 100, end: 200).animate(
-      CurvedAnimation(parent: controller, curve: Curves.easeOut),
-    );
+    radius = Tween<double>(
+      begin: 100,
+      end: 200,
+    ).animate(CurvedAnimation(parent: controller, curve: Curves.easeOut));
   }
 
   void dispose() => controller.dispose();
@@ -74,10 +75,9 @@ class _LiveMapPageState extends State<LiveMapPage>
 
   /// Listens to Firestore 'outages' and creates pulsing circles per cluster
   void _listenToReports() {
-    FirebaseFirestore.instance
-        .collection('outages')
-        .snapshots()
-        .listen((snapshot) async {
+    FirebaseFirestore.instance.collection('outages').snapshots().listen((
+      snapshot,
+    ) async {
       // 1) Filter and group recent docs by rounded location
       final now = DateTime.now();
       final cutoff = now.subtract(Duration(minutes: 5));
@@ -92,7 +92,8 @@ class _LiveMapPageState extends State<LiveMapPage>
         final lng = data['lng'] as num?;
         if (lat == null || lng == null) continue;
 
-        final key = "${lat.toDouble().toStringAsFixed(3)},${lng.toDouble().toStringAsFixed(3)}";
+        final key =
+            "${lat.toDouble().toStringAsFixed(3)},${lng.toDouble().toStringAsFixed(3)}";
         grouped.putIfAbsent(key, () => []).add(data);
       }
 
@@ -103,13 +104,15 @@ class _LiveMapPageState extends State<LiveMapPage>
       // 3) Build new AnimatedCircles
       for (var entry in grouped.entries) {
         final reps = entry.value;
-        final avgLat = reps
-            .map((r) => (r['lat'] as num).toDouble())
-            .reduce((a, b) => a + b) /
+        final avgLat =
+            reps
+                .map((r) => (r['lat'] as num).toDouble())
+                .reduce((a, b) => a + b) /
             reps.length;
-        final avgLng = reps
-            .map((r) => (r['lng'] as num).toDouble())
-            .reduce((a, b) => a + b) /
+        final avgLng =
+            reps
+                .map((r) => (r['lng'] as num).toDouble())
+                .reduce((a, b) => a + b) /
             reps.length;
         final center = LatLng(avgLat, avgLng);
         final status = reps.last['status'] as String;
@@ -117,11 +120,12 @@ class _LiveMapPageState extends State<LiveMapPage>
         // skip "Power Restored" clusters
         if (status == 'Power Restored') continue;
 
-        final color = status == 'No Power'
-            ? Colors.red
-            : status == 'Flickering'
-            ? Colors.yellow
-            : Colors.green;
+        final color =
+            status == 'No Power'
+                ? Colors.red
+                : status == 'Flickering'
+                ? Colors.yellow
+                : Colors.green;
 
         // create and start pulsing
         final ac = AnimatedCircle(position: center, vsync: this, color: color);
@@ -179,13 +183,25 @@ class _LiveMapPageState extends State<LiveMapPage>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
-                  children: [Icon(Icons.circle, color: Colors.red), SizedBox(width: 4), Text("No Power")],
+                  children: [
+                    Icon(Icons.circle, color: Colors.red),
+                    SizedBox(width: 4),
+                    Text("No Power"),
+                  ],
                 ),
                 Row(
-                  children: [Icon(Icons.circle, color: Colors.yellow), SizedBox(width: 4), Text("Flickering")],
+                  children: [
+                    Icon(Icons.circle, color: Colors.yellow),
+                    SizedBox(width: 4),
+                    Text("Flickering"),
+                  ],
                 ),
                 Row(
-                  children: [Icon(Icons.circle, color: Colors.green), SizedBox(width: 4), Text("Power Restored")],
+                  children: [
+                    Icon(Icons.circle, color: Colors.green),
+                    SizedBox(width: 4),
+                    Text("Power Restored"),
+                  ],
                 ),
               ],
             ),

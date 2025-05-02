@@ -28,9 +28,9 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen> {
   Future<void> _fetchWeather() async {
     // call Open-Meteo
     final url = Uri.parse(
-        'https://api.open-meteo.com/v1/forecast'
-            '?latitude=YOUR_LAT&longitude=YOUR_LON'
-            '&current_weather=true&temperature_unit=fahrenheit'
+      'https://api.open-meteo.com/v1/forecast'
+      '?latitude=YOUR_LAT&longitude=YOUR_LON'
+      '&current_weather=true&temperature_unit=fahrenheit',
     );
     // if you need real coords, you can pass them via constructor or fetch Location here
     final res = await http.get(url);
@@ -49,7 +49,9 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen> {
     // once done, push the normal home
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (_) => LightnataApp(userName: widget.userName)),
+      MaterialPageRoute(
+        builder: (_) => LightnataApp(userName: widget.userName),
+      ),
     );
   }
 
@@ -58,22 +60,26 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       body: Center(
-        child: _weather.isEmpty
-            ? CircularProgressIndicator()
-            : Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Welcome back ${widget.userName}!',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 8),
-            Text(
-              'The weather is $_weather ${_isDay ? "☀️" : "🌙"}',
-              style: TextStyle(fontSize: 20),
-            ),
-          ],
-        ),
+        child:
+            _weather.isEmpty
+                ? CircularProgressIndicator()
+                : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Welcome back ${widget.userName}!',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'The weather is $_weather ${_isDay ? "☀️" : "🌙"}',
+                      style: TextStyle(fontSize: 20),
+                    ),
+                  ],
+                ),
       ),
     );
   }
