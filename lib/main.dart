@@ -59,7 +59,8 @@ class AnimatedCircle {
     controller = AnimationController(
       duration: const Duration(seconds: 2),
       vsync: vsync,
-    )..repeat(reverse: true);
+    )
+      ..repeat(reverse: true);
 
     radius = Tween<double>(begin: 100, end: 200).animate(
       CurvedAnimation(parent: controller, curve: Curves.easeOut),
@@ -74,6 +75,7 @@ class AnimatedCircle {
 // ──────────────────────────────────────────────────────────────────────────────
 class EntryScreen extends StatefulWidget {
   const EntryScreen({Key? key}) : super(key: key);
+
   @override
   _EntryScreenState createState() => _EntryScreenState();
 }
@@ -92,7 +94,8 @@ class _EntryScreenState extends State<EntryScreen>
       duration: const Duration(milliseconds: 1000),
       lowerBound: 0.9,
       upperBound: 1.1,
-    )..repeat(reverse: true);
+    )
+      ..repeat(reverse: true);
   }
 
   @override
@@ -109,7 +112,8 @@ class _EntryScreenState extends State<EntryScreen>
             ? Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text("That's an awesome name,", style: TextStyle(fontSize: 20)),
+            const Text(
+                "That's an awesome name,", style: TextStyle(fontSize: 20)),
             Text(
               _controller.text,
               style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
@@ -141,7 +145,9 @@ class _EntryScreenState extends State<EntryScreen>
               scale: _bounceController,
               child: const Text(
                 "Hello!",
-                style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.green),
+                style: TextStyle(fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green),
               ),
             ),
             const SizedBox(height: 20),
@@ -169,6 +175,7 @@ class _EntryScreenState extends State<EntryScreen>
 // ──────────────────────────────────────────────────────────────────────────────
 class WelcomeBackScreen extends StatefulWidget {
   final String userName;
+
   const WelcomeBackScreen({Key? key, required this.userName}) : super(key: key);
 
   @override
@@ -208,7 +215,9 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen> {
     if (res.statusCode == 200) {
       final data = json.decode(res.body);
       final t = (data['current_weather']['temperature'] as num).round();
-      final h = DateTime.now().hour;
+      final h = DateTime
+          .now()
+          .hour;
       setState(() {
         _weather = '$t°F';
         _isDay = h >= 6 && h < 18;
@@ -257,6 +266,7 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen> {
 // ──────────────────────────────────────────────────────────────────────────────
 class LightnataApp extends StatefulWidget {
   final String userName;
+
   const LightnataApp({Key? key, required this.userName}) : super(key: key);
 
   @override
@@ -265,7 +275,8 @@ class LightnataApp extends StatefulWidget {
 
 Set<Marker> _mapMarkers = {};
 
-class _LightnataAppState extends State<LightnataApp> with TickerProviderStateMixin {
+class _LightnataAppState extends State<LightnataApp>
+    with TickerProviderStateMixin {
   GoogleMapController? _mapController;
   LatLng? _currentLocation;
   List<String> _liveFeed = [];
@@ -280,12 +291,14 @@ class _LightnataAppState extends State<LightnataApp> with TickerProviderStateMix
     _listenToAnnouncements();
     FirebaseMessaging.onMessage.listen((msg) {
       final b = msg.notification?.body;
-      if (b != null) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(b)));
+      if (b != null) ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(b)));
     });
 
     _determinePosition().then((_) {
       if (_currentLocation != null) {
-        final test = AnimatedCircle(position: _currentLocation!, vsync: this, color: Colors.blue);
+        final test = AnimatedCircle(
+            position: _currentLocation!, vsync: this, color: Colors.blue);
         test.controller.addListener(() => setState(() {}));
         _animatedCircles.add(test);
       }
@@ -296,13 +309,15 @@ class _LightnataAppState extends State<LightnataApp> with TickerProviderStateMix
 
   @override
   void dispose() {
-    for (var ac in _animatedCircles) ac.dispose();
+    for (var ac in _animatedCircles)
+      ac.dispose();
     super.dispose();
   }
 
   Future<void> _fetchWeather() async {
     if (_currentLocation == null) return;
-    final lat = _currentLocation!.latitude, lon = _currentLocation!.longitude;
+    final lat = _currentLocation!.latitude,
+        lon = _currentLocation!.longitude;
     final url = Uri.parse(
       'https://api.open-meteo.com/v1/forecast'
           '?latitude=$lat&longitude=$lon'
@@ -312,7 +327,9 @@ class _LightnataAppState extends State<LightnataApp> with TickerProviderStateMix
     if (res.statusCode == 200) {
       final data = json.decode(res.body);
       final t = (data['current_weather']['temperature'] as num).round();
-      final h = DateTime.now().hour;
+      final h = DateTime
+          .now()
+          .hour;
       setState(() {
         _weather = '$t°F';
         _isDaytime = h >= 6 && h < 18;
@@ -342,30 +359,38 @@ class _LightnataAppState extends State<LightnataApp> with TickerProviderStateMix
         .doc('latest')
         .snapshots()
         .listen((snap) {
-      if (snap.exists) setState(() => announcementText = snap.data()?['text'] ?? "");
+      if (snap.exists) setState(() =>
+      announcementText = snap.data()?['text'] ?? "");
     });
   }
 
   void _listenToReports() {
     FirebaseFirestore.instance.collection('outages').snapshots().listen((snap) {
-      final now = DateTime.now(), cutoff = now.subtract(const Duration(minutes: 5));
+      final now = DateTime.now(),
+          cutoff = now.subtract(const Duration(minutes: 5));
       final grouped = <String, List<Map<String, dynamic>>>{};
       for (var d in snap.docs) {
-        final m = d.data(), ts = (m['timestamp'] as Timestamp?)?.toDate();
+        final m = d.data(),
+            ts = (m['timestamp'] as Timestamp?)?.toDate();
         if (ts == null || ts.isBefore(cutoff)) continue;
-        final lat = (m['lat'] as num).toDouble(), lng = (m['lng'] as num).toDouble();
+        final lat = (m['lat'] as num).toDouble(),
+            lng = (m['lng'] as num).toDouble();
         final k = "${lat.toStringAsFixed(3)},${lng.toStringAsFixed(3)}";
         grouped.putIfAbsent(k, () => []).add(m);
       }
       _mapMarkers.clear();
-      for (var ac in _animatedCircles) ac.dispose();
+      for (var ac in _animatedCircles)
+        ac.dispose();
       _animatedCircles.clear();
 
       grouped.forEach((k, reps) {
         reps.sort((a, b) =>
-            (a['timestamp'] as Timestamp).toDate().compareTo((b['timestamp'] as Timestamp).toDate()));
-        final avgLat = reps.map((r) => (r['lat'] as num).toDouble()).reduce((a, b) => a + b) / reps.length;
-        final avgLng = reps.map((r) => (r['lng'] as num).toDouble()).reduce((a, b) => a + b) / reps.length;
+            (a['timestamp'] as Timestamp).toDate().compareTo(
+                (b['timestamp'] as Timestamp).toDate()));
+        final avgLat = reps.map((r) => (r['lat'] as num).toDouble()).reduce((a,
+            b) => a + b) / reps.length;
+        final avgLng = reps.map((r) => (r['lng'] as num).toDouble()).reduce((a,
+            b) => a + b) / reps.length;
         final center = LatLng(avgLat, avgLng);
         final status = reps.last['status'] as String;
         final color = status == 'No Power'
@@ -374,7 +399,9 @@ class _LightnataAppState extends State<LightnataApp> with TickerProviderStateMix
             ? Colors.yellow
             : Colors.green;
 
-        _mapMarkers.add(Marker(markerId: MarkerId(k), position: center, infoWindow: InfoWindow(title: status)));
+        _mapMarkers.add(Marker(markerId: MarkerId(k),
+            position: center,
+            infoWindow: InfoWindow(title: status)));
         final ac = AnimatedCircle(position: center, vsync: this, color: color);
         ac.controller.addListener(() => setState(() {}));
         _animatedCircles.add(ac);
@@ -388,23 +415,28 @@ class _LightnataAppState extends State<LightnataApp> with TickerProviderStateMix
     if (_currentLocation == null) return;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: Text("Confirm Report"),
-        content: Text("Confirm $status?"),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Yes")),
-        ],
-      ),
+      builder: (_) =>
+          AlertDialog(
+            title: Text("Confirm Report"),
+            content: Text("Confirm $status?"),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context, false),
+                  child: const Text("Cancel")),
+              TextButton(onPressed: () => Navigator.pop(context, true),
+                  child: const Text("Yes")),
+            ],
+          ),
     );
     if (ok != true) return;
 
-    final area = await _getAreaFromLatLng(_currentLocation!.latitude, _currentLocation!.longitude);
+    final area = await _getAreaFromLatLng(
+        _currentLocation!.latitude, _currentLocation!.longitude);
     final prefs = await SharedPreferences.getInstance();
     final today = DateTime.now().toIso8601String().split('T')[0];
     final key = '$area-$today';
     if (prefs.getBool(key) == true) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("You’ve already reported today in $area.")));
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("You’ve already reported today in $area.")));
       return;
     }
     await prefs.setBool(key, true);
@@ -418,7 +450,13 @@ class _LightnataAppState extends State<LightnataApp> with TickerProviderStateMix
     });
 
     setState(() {
-      _liveFeed.insert(0, "$area - $status at ${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2,'0')}");
+      _liveFeed.insert(0, "$area - $status at ${DateTime
+          .now()
+          .hour}:${DateTime
+          .now()
+          .minute
+          .toString()
+          .padLeft(2, '0')}");
       if (_liveFeed.length > 5) _liveFeed.removeLast();
     });
   }
@@ -426,12 +464,15 @@ class _LightnataAppState extends State<LightnataApp> with TickerProviderStateMix
   Future<BitmapDescriptor> _createMarkerBitmap(Color bg, String txt) async {
     final rec = ui.PictureRecorder();
     final canvas = Canvas(rec);
-    final paint = Paint()..color = bg;
+    final paint = Paint()
+      ..color = bg;
     const sz = 100.0;
-    canvas.drawCircle(Offset(sz/2, sz/2), sz/2, paint);
-    final tp = TextPainter(text: TextSpan(text: txt, style: const TextStyle(color: Colors.white, fontSize: 28)), textDirection: TextDirection.ltr);
+    canvas.drawCircle(Offset(sz / 2, sz / 2), sz / 2, paint);
+    final tp = TextPainter(text: TextSpan(
+        text: txt, style: const TextStyle(color: Colors.white, fontSize: 28)),
+        textDirection: TextDirection.ltr);
     tp.layout();
-    tp.paint(canvas, Offset((sz-tp.width)/2, (sz-tp.height)/2));
+    tp.paint(canvas, Offset((sz - tp.width) / 2, (sz - tp.height) / 2));
     final img = await rec.endRecording().toImage(sz.toInt(), sz.toInt());
     final bd = await img.toByteData(format: ui.ImageByteFormat.png);
     return BitmapDescriptor.fromBytes(bd!.buffer.asUint8List());
@@ -441,7 +482,11 @@ class _LightnataAppState extends State<LightnataApp> with TickerProviderStateMix
     return _animatedCircles.map((anim) {
       final r = anim.radius.value;
       final fade = ((1 - (r - 100) / 100) * 0.5).clamp(0.0, 0.5);
-      return Circle(circleId: CircleId(anim.position.toString()), center: anim.position, radius: r, fillColor: anim.color.withOpacity(fade), strokeWidth: 0);
+      return Circle(circleId: CircleId(anim.position.toString()),
+          center: anim.position,
+          radius: r,
+          fillColor: anim.color.withOpacity(fade),
+          strokeWidth: 0);
     }).toSet();
   }
 
@@ -449,29 +494,38 @@ class _LightnataAppState extends State<LightnataApp> with TickerProviderStateMix
     final ctrl = TextEditingController();
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("Admin Access"),
-        content: TextField(controller: ctrl, obscureText: true, decoration: const InputDecoration(labelText: "Enter Admin Password")),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              if (ctrl.text == "123") {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => AdminLoginScreen()));
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Wrong password")));
-              }
-            },
-            child: const Text("Enter"),
+      builder: (_) =>
+          AlertDialog(
+            title: const Text("Admin Access"),
+            content: TextField(controller: ctrl,
+                obscureText: true,
+                decoration: const InputDecoration(
+                    labelText: "Enter Admin Password")),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context),
+                  child: const Text("Cancel")),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  if (ctrl.text == "123") {
+                    Navigator.push(context,
+                        MaterialPageRoute(builder: (_) => AdminLoginScreen()));
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Wrong password")));
+                  }
+                },
+                child: const Text("Enter"),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
   String _greeting() {
-    final h = DateTime.now().hour;
+    final h = DateTime
+        .now()
+        .hour;
     if (h < 12) return "Good Morning";
     if (h < 17) return "Good Afternoon";
     return "Good Evening";
@@ -483,7 +537,10 @@ class _LightnataAppState extends State<LightnataApp> with TickerProviderStateMix
       backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text('LightNata'),
-        actions: [IconButton(icon: const Icon(Icons.lock_open), onPressed: _openAdminDialog)],
+        actions: [
+          IconButton(
+              icon: const Icon(Icons.lock_open), onPressed: _openAdminDialog)
+        ],
       ),
       body: _currentLocation == null
           ? const Center(child: CircularProgressIndicator())
@@ -491,22 +548,30 @@ class _LightnataAppState extends State<LightnataApp> with TickerProviderStateMix
         child: Column(
           children: [
             const SizedBox(height: 10),
-            Text("${_greeting()}, ${widget.userName}", style: const TextStyle(fontSize: 20)),
-            if (announcementText.isNotEmpty) SlidingAnnouncement(text: announcementText),
+            Text("${_greeting()}, ${widget.userName}",
+                style: const TextStyle(fontSize: 20)),
+            if (announcementText.isNotEmpty) SlidingAnnouncement(
+                text: announcementText),
             if (_weather.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 8),
                 child: Align(
                   alignment: Alignment.centerRight,
-                  child: Text('$_weather ${_isDaytime ? "☀️" : "🌙"}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+                  child: Text('$_weather ${_isDaytime ? "☀️" : "🌙"}',
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w500)),
                 ),
               ),
-            const Padding(padding: EdgeInsets.all(12.0), child: Text("Is your power out?", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+            const Padding(padding: EdgeInsets.all(12.0),
+                child: Text("Is your power out?", style: TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.bold))),
             SizedBox(
               height: 400,
               child: GoogleMap(
                 onMapCreated: (c) => _mapController = c,
-                initialCameraPosition: CameraPosition(target: _currentLocation!, zoom: 14),
+                initialCameraPosition: CameraPosition(
+                    target: _currentLocation!, zoom: 14),
                 myLocationEnabled: true,
                 markers: _mapMarkers,
                 circles: _buildRippleCircles(),
@@ -515,25 +580,54 @@ class _LightnataAppState extends State<LightnataApp> with TickerProviderStateMix
             Wrap(
               spacing: 10,
               children: [
-                ElevatedButton(onPressed: () => _submitReport('No Power'), style: ElevatedButton.styleFrom(backgroundColor: Colors.red), child: const Text('Report Outage', style: TextStyle(color: Colors.black))),
-                ElevatedButton(onPressed: () => _submitReport('Flickering'), style: ElevatedButton.styleFrom(backgroundColor: Colors.yellow), child: const Text('Flickering', style: TextStyle(color: Colors.black))),
-                ElevatedButton(onPressed: () => _submitReport('Power Restored'), style: ElevatedButton.styleFrom(backgroundColor: Colors.green), child: const Text('Power Restored', style: TextStyle(color: Colors.black))),
+                ElevatedButton(onPressed: () => _submitReport('No Power'),
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red),
+                    child: const Text('Report Outage',
+                        style: TextStyle(color: Colors.black))),
+                ElevatedButton(onPressed: () => _submitReport('Flickering'),
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.yellow),
+                    child: const Text(
+                        'Flickering', style: TextStyle(color: Colors.black))),
+                ElevatedButton(onPressed: () => _submitReport('Power Restored'),
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green),
+                    child: const Text('Power Restored',
+                        style: TextStyle(color: Colors.black))),
               ],
             ),
             if (_liveFeed.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.all(12.0),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text("Live Feed:", style: TextStyle(fontWeight: FontWeight.bold)),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text("Live Feed:",
+                      style: TextStyle(fontWeight: FontWeight.bold)),
                   ..._liveFeed.map((e) => Text("• $e")),
                   const SizedBox(height: 16),
-                  const Text("Statuses:", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  const Text("Statuses:", style: TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  Row(children: [Image.asset('assets/redcircle.png', width: 24, height: 24), const SizedBox(width: 8), const Text("Power Outage")]),
+                  Row(children: [
+                    Image.asset('assets/redcircle.png', width: 24, height: 24),
+                    const SizedBox(width: 8),
+                    const Text("Power Outage")
+                  ]),
                   const SizedBox(height: 4),
-                  Row(children: [Image.asset('assets/yellowcircle.png', width: 24, height: 24), const SizedBox(width: 8), const Text("Unstable Power")]),
+                  Row(children: [
+                    Image.asset(
+                        'assets/yellowcircle.png', width: 24, height: 24),
+                    const SizedBox(width: 8),
+                    const Text("Unstable Power")
+                  ]),
                   const SizedBox(height: 4),
-                  Row(children: [Image.asset('assets/greencircle.png', width: 24, height: 24), const SizedBox(width: 8), const Text("Power Restored")]),
+                  Row(children: [
+                    Image.asset(
+                        'assets/greencircle.png', width: 24, height: 24),
+                    const SizedBox(width: 8),
+                    const Text("Power Restored")
+                  ]),
                 ]),
               ),
           ],
@@ -552,7 +646,9 @@ class AdminLoginScreen extends StatefulWidget {
 }
 
 class _AdminLoginScreenState extends State<AdminLoginScreen> {
-  final _user = TextEditingController(), _pass = TextEditingController(), _announcement = TextEditingController();
+  final _user = TextEditingController(),
+      _pass = TextEditingController(),
+      _announcement = TextEditingController();
   bool isLoggedIn = false;
   String dropdownValue = "Select Area";
   List<String> areaOptions = [];
@@ -562,24 +658,38 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
     super.initState();
     FirebaseFirestore.instance.collection('outages').get().then((snap) {
       setState(() {
-        areaOptions = snap.docs.map((d) => d.data()['area'] as String).toSet().toList();
+        areaOptions =
+            snap.docs.map((d) => d.data()['area'] as String).toSet().toList();
       });
     });
   }
 
   void _clearArea(String area) async {
-    final snap = await FirebaseFirestore.instance.collection('outages').where('area', isEqualTo: area).get();
-    for (var d in snap.docs) await d.reference.delete();
-    await FirebaseFirestore.instance.collection('outages').add({'lat': 0, 'lng': 0, 'status': 'Power Restored', 'timestamp': Timestamp.now(), 'area': area});
+    final snap = await FirebaseFirestore.instance.collection('outages').where(
+        'area', isEqualTo: area).get();
+    for (var d in snap.docs)
+      await d.reference.delete();
+    await FirebaseFirestore.instance.collection('outages').add({
+      'lat': 0,
+      'lng': 0,
+      'status': 'Power Restored',
+      'timestamp': Timestamp.now(),
+      'area': area
+    });
     final prefs = await SharedPreferences.getInstance();
     prefs.remove('$area-${DateTime.now().toIso8601String().split('T')[0]}');
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Area '$area' marked restored.")));
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Area '$area' marked restored.")));
   }
 
   void _publishAnnouncement(String msg) async {
     if (msg.isEmpty) return;
-    await FirebaseFirestore.instance.collection('announcements').doc('latest').set({'text': msg});
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Announcement published.")));
+    await FirebaseFirestore.instance
+        .collection('announcements')
+        .doc('latest')
+        .set({'text': msg});
+    ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Announcement published.")));
     _announcement.clear();
     setState(() {});
   }
@@ -587,7 +697,13 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("NAWEC Admin Panel", style: TextStyle(color: Colors.black)), backgroundColor: Colors.white, elevation: 0, leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.black), onPressed: () => Navigator.pop(context))),
+      appBar: AppBar(title: const Text(
+          "NAWEC Admin Panel", style: TextStyle(color: Colors.black)),
+          backgroundColor: Colors.white,
+          elevation: 0,
+          leading: IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.black),
+              onPressed: () => Navigator.pop(context))),
       body: Center(
         child: isLoggedIn
             ? SingleChildScrollView(
@@ -596,30 +712,46 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
             children: [
               Image.asset('assets/nawec.jpg', height: 100),
               const SizedBox(height: 20),
-              const Text("Welcome Admin", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const Text("Welcome Admin",
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               DropdownButton<String>(
                 value: dropdownValue,
-                items: ["Select Area", ...areaOptions].map((a) => DropdownMenuItem(value: a, child: Text(a))).toList(),
+                items: ["Select Area", ...areaOptions].map((a) =>
+                    DropdownMenuItem(value: a, child: Text(a))).toList(),
                 onChanged: (v) => setState(() => dropdownValue = v!),
               ),
-              ElevatedButton(onPressed: dropdownValue != "Select Area" ? () => _clearArea(dropdownValue) : null, child: const Text("Report Restored")),
-              TextField(controller: _announcement, decoration: const InputDecoration(labelText: "Enter announcement")),
-              ElevatedButton(onPressed: () => _publishAnnouncement(_announcement.text.trim()), child: const Text("Publish")),
-              ElevatedButton(onPressed: () => setState(() => isLoggedIn = false), style: ElevatedButton.styleFrom(backgroundColor: Colors.grey), child: const Text("Logout")),
+              ElevatedButton(onPressed: dropdownValue != "Select Area" ? () =>
+                  _clearArea(dropdownValue) : null,
+                  child: const Text("Report Restored")),
+              TextField(controller: _announcement,
+                  decoration: const InputDecoration(
+                      labelText: "Enter announcement")),
+              ElevatedButton(onPressed: () =>
+                  _publishAnnouncement(_announcement.text.trim()),
+                  child: const Text("Publish")),
+              ElevatedButton(
+                  onPressed: () => setState(() => isLoggedIn = false),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.grey),
+                  child: const Text("Logout")),
             ],
           ),
         )
             : Column(mainAxisAlignment: MainAxisAlignment.center, children: [
           Image.asset('assets/nawec.jpg', height: 100),
-          const Text("ADMIN LOGIN", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-          TextField(controller: _user, decoration: const InputDecoration(labelText: "Username")),
-          TextField(controller: _pass, obscureText: true, decoration: const InputDecoration(labelText: "Password")),
+          const Text("ADMIN LOGIN",
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          TextField(controller: _user,
+              decoration: const InputDecoration(labelText: "Username")),
+          TextField(controller: _pass,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: "Password")),
           ElevatedButton(
               onPressed: () {
                 if (_user.text == "Admin" && _pass.text == "123") {
                   setState(() => isLoggedIn = true);
                 } else {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Invalid credentials")));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Invalid credentials")));
                 }
               },
               child: const Text("Login")),
@@ -629,17 +761,21 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
   }
 }
 
+
 // ──────────────────────────────────────────────────────────────────────────────
 // SlidingAnnouncement Widget
 // ──────────────────────────────────────────────────────────────────────────────
 class SlidingAnnouncement extends StatefulWidget {
   final String text;
+
   const SlidingAnnouncement({Key? key, required this.text}) : super(key: key);
+
   @override
   _SlidingAnnouncementState createState() => _SlidingAnnouncementState();
 }
 
-class _SlidingAnnouncementState extends State<SlidingAnnouncement> with SingleTickerProviderStateMixin {
+class _SlidingAnnouncementState extends State<SlidingAnnouncement>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<Offset> _animation;
   bool isPaused = false;
@@ -647,9 +783,12 @@ class _SlidingAnnouncementState extends State<SlidingAnnouncement> with SingleTi
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(duration: const Duration(seconds: 30), vsync: this);
-    _animation = Tween<Offset>(begin: const Offset(1, 0), end: const Offset(-1.5, 0))
-        .animate(CurvedAnimation(parent: _controller, curve: Curves.linear));
+    _controller =
+        AnimationController(duration: const Duration(seconds: 30), vsync: this);
+    _animation =
+        Tween<Offset>(begin: const Offset(1, 0), end: const Offset(-1.5, 0))
+            .animate(
+            CurvedAnimation(parent: _controller, curve: Curves.linear));
     _startLoop();
   }
 
@@ -674,11 +813,20 @@ class _SlidingAnnouncementState extends State<SlidingAnnouncement> with SingleTi
           const SizedBox(width: 10),
           Expanded(
             child: isPaused
-                ? Text('📢 ${widget.text}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold), overflow: TextOverflow.fade, softWrap: false)
-                : SlideTransition(position: _animation, child: Text('📢 ${widget.text}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold), overflow: TextOverflow.fade, softWrap: false)),
+                ? Text('📢 ${widget.text}', style: const TextStyle(
+                color: Colors.white, fontWeight: FontWeight.bold),
+                overflow: TextOverflow.fade,
+                softWrap: false)
+                : SlideTransition(position: _animation,
+                child: Text('📢 ${widget.text}', style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.fade,
+                    softWrap: false)),
           ),
         ],
       ),
     );
   }
 }
+
+
